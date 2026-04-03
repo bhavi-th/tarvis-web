@@ -1,0 +1,267 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap");
+
+:root {
+  --glow: #00f2ff;
+  --bg: #030303;
+  --surface: #0a0a0a;
+  --border: rgba(0, 242, 255, 0.2);
+  --prompt: #5af78e;
+  --text-dim: #aeb9e1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--glow);
+  font-family: "JetBrains Mono", monospace;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  /* Lock the viewport */
+}
+
+/* --- HUD Root & Grid --- */
+.hud-root {
+  display: grid;
+  grid-template-areas:
+    "header header"
+    "vitals terminal"
+    "footer footer";
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 50px minmax(0, 1fr) 30px;
+  /* Force internal scroll */
+  height: 100vh;
+  width: 100%;
+  padding: 12px;
+  gap: 12px;
+  position: relative;
+}
+
+/* Background Scanline Effect */
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom,
+      transparent 50%,
+      rgba(0, 242, 255, 0.02) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* --- Header Section --- */
+.hud-header {
+  grid-area: header;
+  border: 1px solid var(--glow);
+  background: rgba(0, 242, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 2px;
+}
+
+.hud-grid {
+  overflow-y: scroll;
+  height: 100%;
+  grid-column: 1/3;
+}
+
+.blink {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* --- Sidebar Vitals --- */
+.vitals-sidebar {
+  height: 30vmin;
+  grid-area: vitals;
+  border: 1px solid var(--border);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  background: var(--surface);
+}
+
+.stat-module label {
+  display: block;
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.stat-value {
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.progress-bg {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  width: 100%;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--glow);
+  box-shadow: 0 0 10px var(--glow);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Terminal Core --- */
+.terminal-container {
+  height: calc(100% - 30vmin);
+  overflow: scroll;
+  grid-area: terminal;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  position: relative;
+}
+
+.terminal-window-header {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.red {
+  background: #ff5555;
+}
+
+.yellow {
+  background: #f1fa8c;
+}
+
+.green {
+  background: #50fa7b;
+}
+
+.window-title {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-left: 10px;
+}
+
+.terminal-output {
+  flex: 1;
+  overflow-y: scroll;
+  padding: 20px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  scroll-behavior: smooth;
+}
+
+.log-line {
+  margin-bottom: 10px;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.log-line.ai {
+  color: var(--glow);
+}
+
+.terminal-bold {
+  color: #fff;
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.terminal-code {
+  background: rgba(0, 242, 255, 0.1);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+/* --- Input Zone --- */
+.terminal-input-zone {
+  display: flex;
+  align-items: center;
+  padding: 15px 20px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.prompt {
+  color: var(--prompt);
+  margin-right: 12px;
+  font-weight: bold;
+}
+
+.terminal-input-zone input {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  outline: none;
+}
+
+/* --- Footer --- */
+.hud-footer {
+  grid-area: footer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  padding: 0 5px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--glow);
+  border-radius: 2px;
+}
