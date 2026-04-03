@@ -15,12 +15,19 @@ function App() {
     status: "STABLE",
   });
   const [isThinking, setIsThinking] = useState(false);
-  const { isListening, setIsListening } = useVoiceHandler(setInput, isThinking);
+
+  // Integrate Voice Hook with Toggle States
+  const { 
+    isListening, 
+    isVocalUplinkEnabled, 
+    setIsVocalUplinkEnabled 
+  } = useVoiceHandler(setInput, isThinking);
+
   const scrollRef = useRef(null);
 
   useEffect(() => {
     if (!socket) {
-      socket = io("http://localhost:5000");
+      socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:5000");
     }
 
     const handleReply = (reply) => {
@@ -69,7 +76,7 @@ function App() {
     };
   }, []);
 
-  // Auto-scroll logic
+  // Auto-scroll logic for terminal output
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -81,7 +88,6 @@ function App() {
     if (!input.trim() || isThinking) return;
 
     setIsThinking(true);
-    setIsListening(false);
     socket.emit("user_message", input);
     setLogs((prev) => [...prev, `[USER]: ${input}`]);
     setInput("");
@@ -93,9 +99,9 @@ function App() {
 
       <header className="hud-header">
         <div className="system-id">
-          <span className="blink">●</span> TARVIS
+          <span className="blink">●</span> TARVIS (ARCH_LINUX_OPTIMIZED)
         </div>
-        <div className="node-id">// Optimized to interact with arch linux terminal</div>
+        <div className="node-id">// Terminal Authorized Responsive Vocal Integrated System</div>
       </header>
 
       <div className="hud-grid">
@@ -173,11 +179,10 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              /* Dynamic placeholder for feedback */
               placeholder={
                 isThinking
                   ? "ANALYZING_SYSTEM_PARAMETERS..."
-                  : isListening
+                  : isVocalUplinkEnabled
                     ? "LISTENING_FOR_COMMAND..."
                     : "Awaiting your command, Sir."
               }
@@ -186,6 +191,16 @@ function App() {
               spellCheck="false"
               disabled={isThinking}
             />
+
+            {/* Hardware Override Button */}
+            <button
+              type="button"
+              className={`voice-toggle-btn ${isVocalUplinkEnabled ? "enabled" : "disabled"}`}
+              onClick={() => setIsVocalUplinkEnabled(!isVocalUplinkEnabled)}
+              title={isVocalUplinkEnabled ? "Terminate Voice Logic" : "Initialize Voice Logic"}
+            >
+              {isVocalUplinkEnabled ? "V_ON" : "V_OFF"}
+            </button>
           </form>
         </main>
       </div>

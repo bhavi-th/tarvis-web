@@ -145,9 +145,18 @@ body {
 }
 
 @keyframes system-pulse {
-  0% { border-color: var(--border); }
-  50% { border-color: #ff5555; box-shadow: 0 0 10px rgba(255, 85, 85, 0.2); }
-  100% { border-color: var(--border); }
+  0% {
+    border-color: var(--border);
+  }
+
+  50% {
+    border-color: #ff5555;
+    box-shadow: 0 0 10px rgba(255, 85, 85, 0.2);
+  }
+
+  100% {
+    border-color: var(--border);
+  }
 }
 
 .terminal-container.executing {
@@ -241,9 +250,41 @@ body {
 .terminal-input-zone {
   display: flex;
   align-items: center;
-  padding: 15px 20px;
+  padding: 10px 20px;
+  /* Reduced vertical padding slightly */
   border-top: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
+  gap: 12px;
+}
+
+.voice-toggle-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.65rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+  letter-spacing: 1px;
+}
+
+.voice-toggle-btn.enabled {
+  color: var(--glow);
+  border-color: var(--glow);
+  background: rgba(0, 242, 255, 0.05);
+  box-shadow: 0 0 8px rgba(0, 242, 255, 0.1);
+}
+
+.voice-toggle-btn.disabled {
+  color: #ff5555;
+  border-color: rgba(255, 85, 85, 0.3);
+}
+
+.voice-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 .prompt {
@@ -253,6 +294,7 @@ body {
 }
 
 .terminal-input-zone input {
+  flex: 1;
   background: transparent;
   border: none;
   color: #fff;
@@ -262,20 +304,23 @@ body {
   outline: none;
 }
 
-.terminal-input-zone.voice-active {
-  background: rgba(255, 85, 85, 0.03); /* Subtle red tint */
-  border-top: 1px solid rgba(255, 85, 85, 0.4);
-  transition: all 0.3s ease;
-}
-
 .blink-red {
   color: #ff5555;
   animation: pulse-red 1.5s infinite;
 }
 
 @keyframes pulse-red {
-  0%, 100% { opacity: 1; text-shadow: 0 0 5px #ff5555; }
-  50% { opacity: 0.5; text-shadow: 0 0 0px #ff5555; }
+
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 5px #ff5555;
+  }
+
+  50% {
+    opacity: 0.5;
+    text-shadow: 0 0 0px #ff5555;
+  }
 }
 
 /* --- Footer --- */
