@@ -95,7 +95,7 @@ body {
 
 /* --- Sidebar Vitals --- */
 .vitals-sidebar {
-  height: 30vmin;
+  height: 20vmin;
   grid-area: vitals;
   border: 1px solid var(--border);
   padding: 20px;
@@ -134,7 +134,7 @@ body {
 
 /* --- Terminal Core --- */
 .terminal-container {
-  height: calc(100% - 30vmin);
+  height: calc(100% - 20vmin);
   overflow: scroll;
   grid-area: terminal;
   display: flex;
@@ -142,6 +142,16 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   position: relative;
+}
+
+@keyframes system-pulse {
+  0% { border-color: var(--border); }
+  50% { border-color: #ff5555; box-shadow: 0 0 10px rgba(255, 85, 85, 0.2); }
+  100% { border-color: var(--border); }
+}
+
+.terminal-container.executing {
+  animation: system-pulse 1.5s infinite;
 }
 
 .terminal-window-header {
@@ -207,6 +217,13 @@ body {
   color: var(--glow);
 }
 
+.log-line.ai:last-child p:last-child::after {
+  content: "▊";
+  margin-left: 4px;
+  animation: blink 0.8s step-end infinite;
+  color: var(--glow);
+}
+
 .terminal-bold {
   color: #fff;
   font-weight: bold;
@@ -243,6 +260,22 @@ body {
   font-size: 0.9rem;
   width: 100%;
   outline: none;
+}
+
+.terminal-input-zone.voice-active {
+  background: rgba(255, 85, 85, 0.03); /* Subtle red tint */
+  border-top: 1px solid rgba(255, 85, 85, 0.4);
+  transition: all 0.3s ease;
+}
+
+.blink-red {
+  color: #ff5555;
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; text-shadow: 0 0 5px #ff5555; }
+  50% { opacity: 0.5; text-shadow: 0 0 0px #ff5555; }
 }
 
 /* --- Footer --- */

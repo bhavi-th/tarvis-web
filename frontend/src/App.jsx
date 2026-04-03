@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from "react-markdown";
 import "./App.css";
+import { useVoiceHandler } from "./VoiceHandler";
 
-// Connect to the Node.js relay server
 let socket;
 
 function App() {
@@ -15,16 +15,34 @@ function App() {
     status: "STABLE",
   });
   const [isThinking, setIsThinking] = useState(false);
+  const { isListening, setIsListening } = useVoiceHandler(setInput, isThinking);
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    // Initialize socket only once
     if (!socket) {
       socket = io("http://localhost:5000");
     }
 
     const handleReply = (reply) => {
       setLogs((prev) => [...prev, `[TARVIS]: ${reply}`]);
+      setIsThinking(false);
+    };
+
+    const handleChunk = (chunk) => {
+      setLogs((prev) => {
+        const lastLog = prev[prev.length - 1];
+
+        if (lastLog && lastLog.startsWith("[TARVIS]:")) {
+          const newLogs = [...prev];
+          newLogs[newLogs.length - 1] = lastLog + chunk;
+          return newLogs;
+        } else {
+          return [...prev, `[TARVIS]: ${chunk}`];
+        }
+      });
+    };
+
+    const handleDone = () => {
       setIsThinking(false);
     };
 
@@ -37,16 +55,21 @@ function App() {
     };
 
     socket.on("tarvis_reply", handleReply);
+    socket.on("tarvis_chunk", handleChunk);
+    socket.on("tarvis_done", handleDone);
     socket.on("new_log", handleLog);
     socket.on("system_update", handleUpdate);
 
     return () => {
       socket.off("tarvis_reply", handleReply);
+      socket.off("tarvis_chunk", handleChunk);
+      socket.off("tarvis_done", handleDone);
       socket.off("new_log", handleLog);
       socket.off("system_update", handleUpdate);
     };
   }, []);
 
+  // Auto-scroll logic
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -58,6 +81,7 @@ function App() {
     if (!input.trim() || isThinking) return;
 
     setIsThinking(true);
+    setIsListening(false);
     socket.emit("user_message", input);
     setLogs((prev) => [...prev, `[USER]: ${input}`]);
     setInput("");
@@ -66,12 +90,12 @@ function App() {
   return (
     <div className="hud-root">
       <div className="scanline"></div>
-      
+
       <header className="hud-header">
         <div className="system-id">
-          <span className="blink">●</span> TARVIS (Optimized to interact with os)
+          <span className="blink">●</span> TARVIS
         </div>
-        <div className="node-id">NODE_SRV: 127.0.0.1:5000</div>
+        <div className="node-id">// Optimized to interact with arch linux terminal</div>
       </header>
 
       <div className="hud-grid">
@@ -88,11 +112,6 @@ function App() {
             <label>MEM_RESIDENT</label>
             <div className="stat-value">{stats.ram}</div>
           </div>
-
-          <div className="stat-module mini">
-            <label>UPLINK_STABILITY</label>
-            <div className="stat-value small">NOMINAL</div>
-          </div>
         </aside>
 
         <main className="terminal-container">
@@ -105,28 +124,63 @@ function App() {
 
           <div className="terminal-output" ref={scrollRef}>
             {logs.map((log, i) => (
-              <div key={i} className={`log-line ${log.startsWith("[TARVIS]") ? "ai" : ""}`}>
+              <div
+                key={i}
+                className={`log-line ${log.startsWith("[TARVIS]") ? "ai" : ""}`}
+              >
                 <ReactMarkdown
                   components={{
-                    strong: ({ ...props }) => <span className="terminal-bold" {...props} />,
-                    code: ({ ...props }) => <code className="terminal-code" {...props} />,
-                    p: ({ ...props }) => <span {...props} />,
+                    strong: ({ ...props }) => (
+                      <span className="terminal-bold" {...props} />
+                    ),
+                    code: ({ ...props }) => (
+                      <code className="terminal-code" {...props} />
+                    ),
+                    p: ({ children, ...props }) => {
+                      const cleanChildren = React.Children.map(
+                        children,
+                        (child) => {
+                          if (typeof child === "string") {
+                            return child.replace(/\[\[EXEC:.*?\]\]/g, "");
+                          }
+                          return child;
+                        },
+                      );
+                      return <p {...props}>{cleanChildren}</p>;
+                    },
                   }}
                 >
                   {log}
                 </ReactMarkdown>
               </div>
             ))}
-            {isThinking && <div className="log-line ai">...PROCESSING_DIRECTIVE...</div>}
+            {isThinking && (
+              <div className="log-line ai">
+                PROCESSING_INSTRUCTION...<span className="blink">_</span>
+              </div>
+            )}
           </div>
 
-          <form className="terminal-input-zone" onSubmit={handleSubmit}>
-            <span className="prompt">❯</span>
+          <form
+            className={`terminal-input-zone ${isListening ? "voice-active" : ""}`}
+            onSubmit={handleSubmit}
+          >
+            <span className={`prompt ${isListening ? "blink-red" : ""}`}>
+              {isListening ? "🎤" : "❯"}
+            </span>
+
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isThinking ? "SYSTEM_BUSY" : "Execute command..."}
+              /* Dynamic placeholder for feedback */
+              placeholder={
+                isThinking
+                  ? "ANALYZING_SYSTEM_PARAMETERS..."
+                  : isListening
+                    ? "LISTENING_FOR_COMMAND..."
+                    : "Awaiting your command, Sir."
+              }
               autoFocus
               autoComplete="off"
               spellCheck="false"
