@@ -16,12 +16,13 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
 const HISTORY_FILE = "./history.json";
+const TARGET_MODEL = "qwen/qwen3.6-plus:free";
 
 const executeShell = (cmd) => {
   return new Promise((resolve) => {
     exec(cmd, (error, stdout, stderr) => {
       if (error) resolve(`[ERROR]: ${stderr.trim()}`);
-      resolve(stdout.trim());
+      resolve(stdout.trim() || "[SUCCESS]: Operation completed.");
     });
   });
 };
@@ -39,10 +40,15 @@ io.on("connection", (socket) => {
     let history = getHistory();
     const systemPrompt = {
       role: "system",
+
       content: `You are Tarvis, the Terminal Authorized Responsive Vocal Integrated System-a specialized AI assistant for Arch Linux.
+
         Identity: A sophisticated hybrid of JARVIS's predictive intelligence and TARS's dry, honest efficiency.
+
         Creator: You were engineered by Bhavith S.
+
         Tone: Professional, highly technical, and loyal. 
+
         Directives:
         1. Provide precise, high-fidelity Arch Linux configurations and diagnostics.
         2. Execute shell commands via [[EXEC: command]] when requested.
@@ -58,9 +64,9 @@ io.on("connection", (socket) => {
       const response = await axios.post(
         "https://openrouter.ai/api/v1/chat/completions",
         {
-          model: "qwen/qwen3.6-plus:free",
+          model: TARGET_MODEL,
           messages: [systemPrompt, ...history],
-          stream: true, // ENABLE STREAMING
+          stream: true,
         },
         {
           headers: {
@@ -72,106 +78,83 @@ io.on("connection", (socket) => {
 
       let fullReply = "";
 
-      // --- STREAM HANDLING ---
-      response.data.on("data", async (chunk) => {
+      response.data.on("data", (chunk) => {
         const lines = chunk
           .toString()
           .split("\n")
-          .filter((line) => line.trim() !== "");
-
+          .filter((l) => l.trim());
         for (const line of lines) {
-          const cleanLine = line.replace(/^data: /, "");
-          if (cleanLine === "[DONE]") {
-            // Check for EXEC after stream ends
-            handlePostStream(fullReply, history, systemPrompt);
-            return;
-          }
-
+          const clean = line.replace(/^data: /, "");
+          if (clean === "[DONE]") return;
           try {
-            const parsed = JSON.parse(cleanLine);
+            const parsed = JSON.parse(clean);
             const content = parsed.choices[0].delta.content;
             if (content) {
               fullReply += content;
-              socket.emit("tarvis_chunk", content); // SEND CHAR/WORD TO FRONTEND
+              socket.emit("tarvis_chunk", content);
             }
-          } catch (e) {
-            /* Buffer fragment handling */
-          }
+          } catch (e) { }
         }
       });
 
-      // --- COMMAND EXECUTION LOGIC (Post-Stream) ---
-      const handlePostStream = async (reply, hist, sys) => {
-        if (reply.includes("[[EXEC:")) {
-          const cmdMatch = reply.match(/\[\[EXEC: (.*?)\]\]/);
-          if (cmdMatch) {
-            const cmd = cmdMatch[1];
-            socket.emit("new_log", `[SYSTEM]: EXECUTING ${cmd}...`);
+      response.data.on("end", async () => {
+        const match = fullReply.match(/\[\[EXEC:\s*(.*?)\]\]/);
 
-            const output = await executeShell(cmd);
-            hist.push({ role: "assistant", content: reply });
-            hist.push({ role: "system", content: `Command Output: ${output}` });
+        if (match) {
+          const cmd = match[1];
+          socket.emit("new_log", `[SYSTEM]: EXECUTING ${cmd}...`);
+          const output = await executeShell(cmd);
 
-            // Second response for the result of the command
-            const secondResponse = await axios.post(
-              "https://openrouter.ai/api/v1/chat/completions",
-              {
-                model: "qwen/qwen3.6-plus:free",
-                messages: [sys, ...hist],
+          history.push({ role: "assistant", content: fullReply });
+          history.push({
+            role: "system",
+            content: `Command Output: ${output}`,
+          });
+
+          const secondResponse = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+              model: TARGET_MODEL,
+              messages: [systemPrompt, ...history],
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
               },
-              {
-                headers: {
-                  Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                },
-              },
-            );
+            },
+          );
 
-            const finalReply = secondResponse.data.choices[0].message.content;
-            hist.push({ role: "assistant", content: finalReply });
-            saveHistory(hist);
-
-            // For the second response, we can just emit it full or stream again
-            // Emitting full for simplicity since it's usually short
-            socket.emit("tarvis_reply", finalReply);
-          }
+          const finalReply = secondResponse.data.choices[0].message.content;
+          socket.emit("tarvis_reply", finalReply);
+          history.push({ role: "assistant", content: finalReply });
+          saveHistory(history);
         } else {
-          hist.push({ role: "assistant", content: reply });
-          saveHistory(hist);
-          socket.emit("tarvis_done"); // Signal finish
+          history.push({ role: "assistant", content: fullReply });
+          saveHistory(history);
+          socket.emit("tarvis_done");
         }
-      };
+      });
     } catch (err) {
       socket.emit("new_log", `[SYSTEM_ERROR]: ${err.message}`);
+      socket.emit("tarvis_done");
     }
   };
 
-  // Telemetry Loop
-  const sendSystemStats = () => {
+  const statsInterval = setInterval(() => {
     const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
-    const ramDisplay = `${(usedMem / 1024 / 1024 / 1024).toFixed(1)} / ${(totalMem / 1024 / 1024 / 1024).toFixed(1)} GiB`;
-
-    const cpus = os.cpus().length;
+    const usedMem = totalMem - os.freemem();
     const load = os.loadavg()[0];
-    const cpuPercent = Math.min(100, (load / cpus) * 100).toFixed(1);
-
     socket.emit("system_update", {
-      cpu: `${cpuPercent}%`,
-      ram: ramDisplay,
-      status: load > cpus ? "HEAVY_LOAD" : "STABLE",
+      cpu: `${((load / os.cpus().length) * 100).toFixed(1)}%`,
+      ram: `${(usedMem / 1024 ** 3).toFixed(1)} / ${(totalMem / 1024 ** 3).toFixed(1)} GiB`,
     });
-  };
-
-  const statsInterval = setInterval(sendSystemStats, 2000);
+  }, 2000);
 
   socket.on("user_message", messageHandler);
-
   socket.on("disconnect", () => {
     clearInterval(statsInterval);
-    console.log(`[LOG]: HUD_LINK_TERMINATED // ID: ${socketId}`);
     socket.removeListener("user_message", messageHandler);
   });
 });
 
-httpServer.listen(5000, () => console.log("TARVIS_SERVER_ONLINE_ON_PORT_5000"));
+httpServer.listen(5000);
