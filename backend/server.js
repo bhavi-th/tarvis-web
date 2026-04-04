@@ -111,27 +111,69 @@ io.on("connection", (socket) => {
             content: `Command Output: ${output}`,
           });
 
-          socket.emit("new_log", `[SYSTEM]: COOLING DOWN (1s)...`);
+          // Rate limit cooldown
           await new Promise((resolve) => setTimeout(resolve, 1000));
 
-          const secondResponse = await axios.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            {
-              model: TARGET_MODEL,
-              messages: [systemPrompt, ...history],
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          try {
+            const secondResponse = await axios.post(
+              "https://openrouter.ai/api/v1/chat/completions",
+              {
+                model: TARGET_MODEL,
+                messages: [systemPrompt, ...history],
+                stream: true, // Streaming enabled
               },
-            },
-          );
+              {
+                headers: {
+                  Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                },
+                responseType: "stream",
+              },
+            );
 
-          const finalReply = secondResponse.data.choices[0].message.content;
-          socket.emit("tarvis_reply", finalReply);
-          history.push({ role: "assistant", content: finalReply });
-          saveHistory(history);
+            let finalReply = "";
+
+            secondResponse.data.on("data", (chunk) => {
+              const lines = chunk
+                .toString()
+                .split("\n")
+                .filter((l) => l.trim());
+
+              for (const line of lines) {
+                const clean = line.replace(/^data: /, "");
+                if (clean === "[DONE]") {
+                  // When stream finishes, save to history and notify frontend
+                  history.push({ role: "assistant", content: finalReply });
+                  saveHistory(history);
+                  socket.emit("tarvis_done");
+                  return;
+                }
+
+                try {
+                  const parsed = JSON.parse(clean);
+                  const content = parsed.choices[0].delta.content;
+                  if (content) {
+                    finalReply += content;
+                    // Use the same chunk event as the first response
+                    socket.emit("tarvis_chunk", content);
+                  }
+                } catch (e) {
+                  // Ignore partial/malformed JSON chunks
+                }
+              }
+            });
+
+            secondResponse.data.on("error", (err) => {
+              socket.emit(
+                "new_log",
+                `[SYSTEM_ERROR]: Stream failed - ${err.message}`,
+              );
+            });
+          } catch (err) {
+            socket.emit("new_log", `[SYSTEM_ERROR]: ${err.message}`);
+            socket.emit("tarvis_done");
+          }
         } else {
+          // Standard non-EXEC path
           history.push({ role: "assistant", content: fullReply });
           saveHistory(history);
           socket.emit("tarvis_done");
