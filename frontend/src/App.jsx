@@ -15,37 +15,105 @@ function App() {
     status: "STABLE",
   });
   const [isThinking, setIsThinking] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const [isVocalUplinkEnabled, setIsVocalUplinkEnabled] = useState(false);
+
   const scrollRef = useRef(null);
+  const sendMessageRef = useRef(null);
+  const wasVocalEnabledRef = useRef(false);
+  const micLockRef = useRef(false);
 
-  const sendMessage = useCallback((message) => {
-    const cleanMessage = message?.trim();
-    if (!cleanMessage || isThinking) return;
+  const cleanTextForSpeech = (text) => {
+    return text
+      .replace(/\[\[EXEC:.*?\]\]/g, "")
+      .replace(/\[TARVIS\]:/g, "")
+      .replace(/[*#_`~]/g, "")
+      .trim();
+  };
 
-    setIsThinking(true);
-    socket.emit("user_message", cleanMessage);
-    setLogs((prev) => [...prev, `[USER]: ${cleanMessage}`]);
-    setInput("");
-  }, [isThinking]);
+  const sendMessage = useCallback(
+    (message) => {
+      const cleanMessage = message?.trim();
+      if (!cleanMessage || isThinking) return;
 
-  const { 
-    isListening, 
-    isVocalUplinkEnabled, 
-    setIsVocalUplinkEnabled 
-  } = useVoiceHandler(
-    setInput, 
-    isThinking, 
-    useCallback((finalText) => sendMessage(finalText), [sendMessage])
+      micLockRef.current = true;
+      wasVocalEnabledRef.current = isVocalUplinkEnabled;
+
+      setIsVocalUplinkEnabled(false);
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      setIsThinking(true);
+
+      socket.emit("user_message", cleanMessage);
+      setLogs((prev) => [...prev, `[USER]: ${cleanMessage}`]);
+      setInput("");
+    },
+    [isThinking, isVocalUplinkEnabled, setIsVocalUplinkEnabled],
+  );
+
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
+  const { isListening } = useVoiceHandler(
+    setInput,
+    isThinking,
+    isSpeaking,
+    useCallback((finalText) => {
+      if (!micLockRef.current && sendMessageRef.current) {
+        sendMessageRef.current(finalText);
+      }
+    }, []),
+    isVocalUplinkEnabled,
+    setIsVocalUplinkEnabled,
+  );
+
+  const speak = useCallback(
+    (text) => {
+      if (!window.speechSynthesis) return;
+
+      micLockRef.current = true;
+      setIsSpeaking(true);
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
+      utterance.rate = 1.0;
+      utterance.pitch = 0.8;
+
+      const handleSpeechEnd = () => {
+        setTimeout(() => {
+          setIsSpeaking(false);
+          micLockRef.current = false;
+          if (wasVocalEnabledRef.current) {
+            setIsVocalUplinkEnabled(true);
+          }
+        }, 500);
+      };
+
+      utterance.onstart = () => {
+        console.log("Speaking : ", text);
+      };
+      utterance.onend = () => {
+        console.log("Stopped speaking : ", text);
+        handleSpeechEnd();
+      };
+      utterance.onerror = () => {
+        console.log("Erorr speaking : ", text);
+        handleSpeechEnd();
+      };
+
+      setTimeout(() => {
+        window.speechSynthesis.speak(utterance);
+      }, 100);
+    },
+    [setIsVocalUplinkEnabled],
   );
 
   useEffect(() => {
     if (!socket) {
       socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:5000");
     }
-
-    const handleReply = (reply) => {
-      setLogs((prev) => [...prev, `[TARVIS]: ${reply}`]);
-      setIsThinking(false);
-    };
 
     const handleChunk = (chunk) => {
       setLogs((prev) => {
@@ -60,7 +128,23 @@ function App() {
       });
     };
 
-    const handleDone = () => setIsThinking(false);
+    const handleDone = () => {
+      setIsSpeaking(true);
+      setIsThinking(false);
+
+      // Access the latest logs to speak the completed message
+      setLogs((currentLogs) => {
+        const lastLog = currentLogs[currentLogs.length - 1];
+        if (lastLog && lastLog.startsWith("[TARVIS]:")) {
+          speak(lastLog);
+        } else {
+          setIsSpeaking(false);
+        }
+        return currentLogs;
+      });
+    };
+
+    const handleReply = () => setIsThinking(false);
     const handleLog = (message) => setLogs((prev) => [...prev, message]);
     const handleUpdate = (data) => setStats((prev) => ({ ...prev, ...data }));
 
@@ -77,7 +161,7 @@ function App() {
       socket.off("new_log", handleLog);
       socket.off("system_update", handleUpdate);
     };
-  }, []);
+  }, [speak]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -97,7 +181,9 @@ function App() {
         <div className="system-id">
           <span className="blink">●</span> TARVIS (ARCH_LINUX_OPTIMIZED)
         </div>
-        <div className="node-id">// Terminal Authorized Responsive Vocal Integrated System</div>
+        <div className="node-id">
+          // Terminal Authorized Responsive Vocal Integrated System
+        </div>
       </header>
 
       <div className="hud-grid">
@@ -125,16 +211,27 @@ function App() {
 
           <div className="terminal-output" ref={scrollRef}>
             {logs.map((log, i) => (
-              <div key={i} className={`log-line ${log.startsWith("[TARVIS]") ? "ai" : ""}`}>
+              <div
+                key={i}
+                className={`log-line ${log.startsWith("[TARVIS]") ? "ai" : ""}`}
+              >
                 <ReactMarkdown
                   components={{
-                    strong: ({ ...props }) => <span className="terminal-bold" {...props} />,
-                    code: ({ ...props }) => <code className="terminal-code" {...props} />,
+                    strong: ({ ...props }) => (
+                      <span className="terminal-bold" {...props} />
+                    ),
+                    code: ({ ...props }) => (
+                      <code className="terminal-code" {...props} />
+                    ),
                     p: ({ children, ...props }) => {
-                      const cleanChildren = React.Children.map(children, (child) => {
-                        if (typeof child === "string") return child.replace(/\[\[EXEC:.*?\]\]/g, "");
-                        return child;
-                      });
+                      const cleanChildren = React.Children.map(
+                        children,
+                        (child) => {
+                          if (typeof child === "string")
+                            return child.replace(/\[\[EXEC:.*?\]\]/g, "");
+                          return child;
+                        },
+                      );
                       return <p {...props}>{cleanChildren}</p>;
                     },
                   }}
@@ -162,7 +259,11 @@ function App() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                isThinking ? "ANALYZING..." : isVocalUplinkEnabled ? "LISTENING..." : "Awaiting command..."
+                isThinking
+                  ? "ANALYZING..."
+                  : isVocalUplinkEnabled
+                    ? "LISTENING..."
+                    : "Awaiting command..."
               }
               autoFocus
               autoComplete="off"

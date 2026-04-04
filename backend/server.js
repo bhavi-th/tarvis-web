@@ -111,6 +111,9 @@ io.on("connection", (socket) => {
             content: `Command Output: ${output}`,
           });
 
+          socket.emit("new_log", `[SYSTEM]: COOLING DOWN (1s)...`);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
           const secondResponse = await axios.post(
             "https://openrouter.ai/api/v1/chat/completions",
             {
